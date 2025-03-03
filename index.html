@@ -40,6 +40,12 @@
         .processing-controls input {
             margin-bottom: 8px;
         }
+        .rotation-controls {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e9f7fe;
+            border-radius: 8px;
+        }
         video, canvas, img {
             width: 100%;
             border-radius: 4px;
@@ -63,6 +69,11 @@
         .secondary-btn {
             background-color: #2196F3;
         }
+        .mini-btn {
+            padding: 5px 10px;
+            font-size: 14px;
+            margin: 2px;
+        }
         #results {
             margin-top: 20px;
             padding: 10px;
@@ -82,6 +93,22 @@
         .hidden {
             display: none;
         }
+        .tabs {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        .tab {
+            padding: 8px 15px;
+            background-color: #ddd;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -92,29 +119,59 @@
         </div>
         
         <div id="processingControls" class="processing-controls hidden">
-            <h3>画像前処理オプション</h3>
-            <div>
-                <label for="grayscale">グレースケール:</label>
-                <input type="checkbox" id="grayscale" checked>
+            <div class="tabs">
+                <button class="tab active" data-tab="basic">基本設定</button>
+                <button class="tab" data-tab="rotation">回転補正</button>
             </div>
-            <div>
-                <label for="contrast">コントラスト:</label>
-                <input type="range" id="contrast" min="100" max="200" value="130">
-                <span id="contrastValue">130%</span>
+            
+            <div id="basicTab">
+                <h3>基本設定</h3>
+                <div>
+                    <label for="grayscale">グレースケール:</label>
+                    <input type="checkbox" id="grayscale" checked>
+                </div>
+                <div>
+                    <label for="contrast">コントラスト:</label>
+                    <input type="range" id="contrast" min="100" max="200" value="130">
+                    <span id="contrastValue">130%</span>
+                </div>
+                <div>
+                    <label for="brightness">明るさ:</label>
+                    <input type="range" id="brightness" min="80" max="120" value="100">
+                    <span id="brightnessValue">100%</span>
+                </div>
+                <div>
+                    <label for="threshold">しきい値処理:</label>
+                    <input type="checkbox" id="threshold">
+                </div>
+                <div>
+                    <label for="thresholdValue">しきい値:</label>
+                    <input type="range" id="thresholdValue" min="0" max="255" value="127">
+                    <span id="thresholdValueDisplay">127</span>
+                </div>
             </div>
-            <div>
-                <label for="brightness">明るさ:</label>
-                <input type="range" id="brightness" min="80" max="120" value="100">
-                <span id="brightnessValue">100%</span>
-            </div>
-            <div>
-                <label for="threshold">しきい値処理:</label>
-                <input type="checkbox" id="threshold">
-            </div>
-            <div>
-                <label for="thresholdValue">しきい値:</label>
-                <input type="range" id="thresholdValue" min="0" max="255" value="127">
-                <span id="thresholdValueDisplay">127</span>
+            
+            <div id="rotationTab" class="hidden">
+                <h3>回転補正</h3>
+                <div>
+                    <label for="autoRotate">自動回転補正:</label>
+                    <input type="checkbox" id="autoRotate" checked>
+                </div>
+                <div>
+                    <p>手動回転調整:</p>
+                    <button class="mini-btn secondary-btn" id="rotateLeft1">-90°</button>
+                    <button class="mini-btn secondary-btn" id="rotateRight1">+90°</button>
+                    <input type="range" id="fineRotation1" min="-45" max="45" value="0">
+                    <span id="rotationValue1">0°</span>
+                    <span id="imageLabel1">(画像1)</span>
+                </div>
+                <div>
+                    <button class="mini-btn secondary-btn" id="rotateLeft2">-90°</button>
+                    <button class="mini-btn secondary-btn" id="rotateRight2">+90°</button>
+                    <input type="range" id="fineRotation2" min="-45" max="45" value="0">
+                    <span id="rotationValue2">0°</span>
+                    <span id="imageLabel2">(画像2)</span>
+                </div>
             </div>
         </div>
         
@@ -171,6 +228,10 @@
             text1: [],
             text2: []
         };
+        let rotationAngles = {
+            image1: 0,
+            image2: 0
+        };
         
         // DOM要素
         const video = document.getElementById('video');
@@ -199,6 +260,42 @@
         const brightnessValue = document.getElementById('brightnessValue');
         const thresholdValueDisplay = document.getElementById('thresholdValueDisplay');
         
+        // 回転コントロール
+        const autoRotateCheckbox = document.getElementById('autoRotate');
+        const rotateLeft1 = document.getElementById('rotateLeft1');
+        const rotateRight1 = document.getElementById('rotateRight1');
+        const fineRotation1 = document.getElementById('fineRotation1');
+        const rotationValue1 = document.getElementById('rotationValue1');
+        const rotateLeft2 = document.getElementById('rotateLeft2');
+        const rotateRight2 = document.getElementById('rotateRight2');
+        const fineRotation2 = document.getElementById('fineRotation2');
+        const rotationValue2 = document.getElementById('rotationValue2');
+        
+        // タブ機能
+        const tabs = document.querySelectorAll('.tab');
+        const basicTab = document.getElementById('basicTab');
+        const rotationTab = document.getElementById('rotationTab');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+                
+                // アクティブタブを設定
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                // タブコンテンツを表示/非表示
+                basicTab.classList.add('hidden');
+                rotationTab.classList.add('hidden');
+                
+                if (tabName === 'basic') {
+                    basicTab.classList.remove('hidden');
+                } else if (tabName === 'rotation') {
+                    rotationTab.classList.remove('hidden');
+                }
+            });
+        });
+        
         // コントロール値更新リスナー
         contrastSlider.addEventListener('input', () => {
             contrastValue.textContent = `${contrastSlider.value}%`;
@@ -214,6 +311,55 @@
         });
         grayscaleCheckbox.addEventListener('change', updateProcessedImages);
         thresholdCheckbox.addEventListener('change', updateProcessedImages);
+        autoRotateCheckbox.addEventListener('change', updateProcessedImages);
+        
+        // 回転コントロールリスナー
+        rotateLeft1.addEventListener('click', () => {
+            rotationAngles.image1 = (rotationAngles.image1 - 90) % 360;
+            fineRotation1.value = 0;
+            updateRotationDisplay();
+            updateProcessedImages();
+        });
+        
+        rotateRight1.addEventListener('click', () => {
+            rotationAngles.image1 = (rotationAngles.image1 + 90) % 360;
+            fineRotation1.value = 0;
+            updateRotationDisplay();
+            updateProcessedImages();
+        });
+        
+        fineRotation1.addEventListener('input', () => {
+            updateRotationDisplay();
+            updateProcessedImages();
+        });
+        
+        rotateLeft2.addEventListener('click', () => {
+            rotationAngles.image2 = (rotationAngles.image2 - 90) % 360;
+            fineRotation2.value = 0;
+            updateRotationDisplay();
+            updateProcessedImages();
+        });
+        
+        rotateRight2.addEventListener('click', () => {
+            rotationAngles.image2 = (rotationAngles.image2 + 90) % 360;
+            fineRotation2.value = 0;
+            updateRotationDisplay();
+            updateProcessedImages();
+        });
+        
+        fineRotation2.addEventListener('input', () => {
+            updateRotationDisplay();
+            updateProcessedImages();
+        });
+        
+        // 回転角度表示を更新
+        function updateRotationDisplay() {
+            const fineAngle1 = parseInt(fineRotation1.value);
+            const fineAngle2 = parseInt(fineRotation2.value);
+            
+            rotationValue1.textContent = `${rotationAngles.image1 + fineAngle1}°`;
+            rotationValue2.textContent = `${rotationAngles.image2 + fineAngle2}°`;
+        }
         
         // 前処理オプションの表示切替
         toggleProcessingBtn.addEventListener('click', () => {
@@ -254,7 +400,7 @@
                 capturedImages.photo1 = imgData;
                 
                 // 画像を処理
-                processImage(imgData, canvas1, processed1, 'processed1');
+                processImage(imgData, canvas1, processed1, 'processed1', 1);
                 text1Div.innerHTML = "<p>テキスト解析中...</p>";
                 
                 currentImageNum = 2;
@@ -263,7 +409,7 @@
                 capturedImages.photo2 = imgData;
                 
                 // 画像を処理
-                processImage(imgData, canvas2, processed2, 'processed2');
+                processImage(imgData, canvas2, processed2, 'processed2', 2);
                 text2Div.innerHTML = "<p>テキスト解析中...</p>";
                 
                 // 比較ボタンを有効化
@@ -273,74 +419,191 @@
         }
         
         // 画像処理
-        function processImage(imageData, canvasElement, imgElement, imgKey) {
+        function processImage(imageData, canvasElement, imgElement, imgKey, imageIndex) {
             const img = new Image();
             img.onload = function() {
-                // キャンバスのサイズを設定
-                canvasElement.width = img.width;
-                canvasElement.height = img.height;
-                const ctx = canvasElement.getContext('2d');
-
-                // 画像をキャンバスに描画
-                ctx.drawImage(img, 0, 0);
-                
-                // 画像データを取得
-                const imageData = ctx.getImageData(0, 0, canvasElement.width, canvasElement.height);
-                const data = imageData.data;
-                
-                // グレースケール処理
-                if (grayscaleCheckbox.checked) {
-                    for (let i = 0; i < data.length; i += 4) {
-                        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                        data[i] = avg;       // R
-                        data[i + 1] = avg;   // G
-                        data[i + 2] = avg;   // B
-                    }
+                // 自動回転検出
+                if (autoRotateCheckbox.checked) {
+                    detectRotation(img, imageIndex).then(angle => {
+                        if (imageIndex === 1) {
+                            rotationAngles.image1 = angle;
+                            fineRotation1.value = 0;
+                        } else {
+                            rotationAngles.image2 = angle;
+                            fineRotation2.value = 0;
+                        }
+                        updateRotationDisplay();
+                        applyImageProcessing(img, canvasElement, imgElement, imgKey, imageIndex);
+                    });
+                } else {
+                    applyImageProcessing(img, canvasElement, imgElement, imgKey, imageIndex);
                 }
-                
-                // コントラスト調整
-                const contrast = contrastSlider.value / 100;
-                const brightness = (brightnessSlider.value - 100) / 100;
-                
-                for (let i = 0; i < data.length; i += 4) {
-                    // コントラスト調整
-                    data[i] = applyContrast(data[i], contrast, brightness);
-                    data[i + 1] = applyContrast(data[i + 1], contrast, brightness);
-                    data[i + 2] = applyContrast(data[i + 2], contrast, brightness);
-                }
-                
-                // しきい値処理
-                if (thresholdCheckbox.checked) {
-                    const threshold = parseInt(thresholdValueSlider.value);
-                    for (let i = 0; i < data.length; i += 4) {
-                        const v = (data[i] + data[i + 1] + data[i + 2]) / 3 >= threshold ? 255 : 0;
-                        data[i] = v;       // R
-                        data[i + 1] = v;   // G
-                        data[i + 2] = v;   // B
-                    }
-                }
-                
-                // 処理した画像を描画
-                ctx.putImageData(imageData, 0, 0);
-                
-                // 処理された画像のDataURLを取得
-                const processedImageData = canvasElement.toDataURL('image/png');
-                imgElement.src = processedImageData;
-                processedImages[imgKey] = processedImageData;
-                
-                // OCRを実行
-                extractText(processedImageData, imgKey === 'processed1' ? 'text1' : 'text2');
             };
             img.src = imageData;
+        }
+        
+        // 自動回転検出（テキストの向きを検出）
+        async function detectRotation(img, imageIndex) {
+            // テキスト方向の検出のために一時キャンバスを作成
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = img.width;
+            tempCanvas.height = img.height;
+            
+            // グレースケール処理した画像を作成（検出を高速化）
+            tempCtx.drawImage(img, 0, 0);
+            const imgData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const data = imgData.data;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                data[i] = avg;
+                data[i + 1] = avg;
+                data[i + 2] = avg;
+            }
+            
+            tempCtx.putImageData(imgData, 0, 0);
+            
+            // 4つの方向（0, 90, 180, 270度）で OCR を実行し、もっとも信頼性の高い方向を選択
+            try {
+                const angles = [0, 90, 180, 270];
+                let bestAngle = 0;
+                let highestConfidence = 0;
+                
+                // 簡易的な検出のため、画像の解像度を下げる
+                const scaleFactor = Math.min(1, 500 / Math.max(img.width, img.height));
+                tempCanvas.width = img.width * scaleFactor;
+                tempCanvas.height = img.height * scaleFactor;
+                
+                // 各角度で試行
+                for (const angle of angles) {
+                    tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+                    tempCtx.save();
+                    tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
+                    tempCtx.rotate(angle * Math.PI / 180);
+                    tempCtx.drawImage(img, -img.width * scaleFactor / 2, -img.height * scaleFactor / 2, 
+                                     img.width * scaleFactor, img.height * scaleFactor);
+                    tempCtx.restore();
+                    
+                    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.7);
+                    
+                    // 最適化のため1秒だけ待機してテキストの一部だけを検出
+                    const result = await Tesseract.recognize(dataUrl, 'jpn+eng', {
+                        logger: m => console.log(`角度 ${angle}°: `, m),
+                        tessedit_ocr_engine_mode: 3, // 高速モード
+                        tessedit_pageseg_mode: 3,
+                        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん',
+                        textord_min_linesize: 2.5
+                    }).catch(err => {
+                        console.error(`角度 ${angle}° での検出中にエラーが発生しました:`, err);
+                        return { data: { confidence: 0 } };
+                    });
+                    
+                    console.log(`角度 ${angle}° の信頼度:`, result.data.confidence);
+                    
+                    if (result.data.confidence > highestConfidence) {
+                        highestConfidence = result.data.confidence;
+                        bestAngle = angle;
+                    }
+                }
+                
+                // 最適な角度を返す（0、90、180、270のいずれか）
+                console.log(`画像 ${imageIndex} の最適な回転角度:`, bestAngle);
+                return bestAngle === 0 ? 0 : (360 - bestAngle); // 表示用に変換
+            } catch (err) {
+                console.error("回転検出中にエラーが発生しました:", err);
+                return 0; // エラー時は回転なしで続行
+            }
+        }
+        
+        // 画像処理を実際に適用する
+        function applyImageProcessing(img, canvasElement, imgElement, imgKey, imageIndex) {
+            // キャンバスのサイズを設定
+            canvasElement.width = img.width;
+            canvasElement.height = img.height;
+            const ctx = canvasElement.getContext('2d');
+            
+            // 回転角度を取得
+            const baseAngle = imageIndex === 1 ? rotationAngles.image1 : rotationAngles.image2;
+            const fineAngle = parseInt(imageIndex === 1 ? fineRotation1.value : fineRotation2.value);
+            const totalAngle = baseAngle + fineAngle;
+            
+            // クリア
+            ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // 回転変換を適用
+            ctx.save();
+            ctx.translate(canvasElement.width / 2, canvasElement.height / 2);
+            ctx.rotate(totalAngle * Math.PI / 180);
+            
+            // 回転後の描画範囲を計算
+            const rads = Math.abs(totalAngle * Math.PI / 180);
+            const sine = Math.sin(rads);
+            const cosine = Math.cos(rads);
+            const imgWidth = img.width;
+            const imgHeight = img.height;
+            const newWidth = imgWidth * cosine + imgHeight * sine;
+            const newHeight = imgWidth * sine + imgHeight * cosine;
+            
+            // 画像を描画
+            ctx.drawImage(img, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+            ctx.restore();
+            
+            // 画像データを取得
+            const imageData = ctx.getImageData(0, 0, canvasElement.width, canvasElement.height);
+            const data = imageData.data;
+            
+            // グレースケール処理
+            if (grayscaleCheckbox.checked) {
+                for (let i = 0; i < data.length; i += 4) {
+                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                    data[i] = avg;       // R
+                    data[i + 1] = avg;   // G
+                    data[i + 2] = avg;   // B
+                }
+            }
+            
+            // コントラスト調整
+            const contrast = contrastSlider.value / 100;
+            const brightness = (brightnessSlider.value - 100) / 100;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                // コントラスト調整
+                data[i] = applyContrast(data[i], contrast, brightness);
+                data[i + 1] = applyContrast(data[i + 1], contrast, brightness);
+                data[i + 2] = applyContrast(data[i + 2], contrast, brightness);
+            }
+            
+            // しきい値処理
+            if (thresholdCheckbox.checked) {
+                const threshold = parseInt(thresholdValueSlider.value);
+                for (let i = 0; i < data.length; i += 4) {
+                    const v = (data[i] + data[i + 1] + data[i + 2]) / 3 >= threshold ? 255 : 0;
+                    data[i] = v;       // R
+                    data[i + 1] = v;   // G
+                    data[i + 2] = v;   // B
+                }
+            }
+            
+            // 処理した画像を描画
+            ctx.putImageData(imageData, 0, 0);
+            
+            // 処理された画像のDataURLを取得
+            const processedImageData = canvasElement.toDataURL('image/png');
+            imgElement.src = processedImageData;
+            processedImages[imgKey] = processedImageData;
+            
+            // OCRを実行
+            extractText(processedImageData, imgKey === 'processed1' ? 'text1' : 'text2');
         }
         
         // 既にキャプチャした画像を再処理
         function updateProcessedImages() {
             if (capturedImages.photo1) {
-                processImage(capturedImages.photo1, canvas1, processed1, 'processed1');
+                processImage(capturedImages.photo1, canvas1, processed1, 'processed1', 1);
             }
             if (capturedImages.photo2) {
-                processImage(capturedImages.photo2, canvas2, processed2, 'processed2');
+                processImage(capturedImages.photo2, canvas2, processed2, 'processed2', 2);
             }
         }
         
@@ -415,6 +678,10 @@
                 text1: [],
                 text2: []
             };
+            rotationAngles = {
+                image1: 0,
+                image2: 0
+            };
             
             photo1.src = "";
             photo2.src = "";
@@ -423,6 +690,10 @@
             text1Div.innerHTML = "";
             text2Div.innerHTML = "";
             matchedTextDiv.innerHTML = "";
+            
+            fineRotation1.value = 0;
+            fineRotation2.value = 0;
+            updateRotationDisplay();
             
             captureBtn.disabled = false;
             compareBtn.disabled = true;
