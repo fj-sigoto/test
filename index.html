@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>共通文字列検出アプリ</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .camera-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .preview-container {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .preview {
+            width: 48%;
+            height: 150px;
+            border: 1px solid #ccc;
+            background-color: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .preview img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+        button {
+            padding: 10px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background-color: #ccc;
+        }
+        .result {
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            min-height: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>共通文字列検出アプリ</h1>
+        
+        <div class="camera-section">
+            <div class="preview-container">
+                <div class="preview" id="preview1">画像1</div>
+                <div class="preview" id="preview2">画像2</div>
+            </div>
+            <button id="captureBtn1">画像1を撮影</button>
+            <button id="captureBtn2" disabled>画像2を撮影</button>
+            <button id="compareBtn" disabled>文字列を比較</button>
+        </div>
+        
+        <div>
+            <h2>検出結果</h2>
+            <div class="result" id="result">結果がここに表示されます</div>
+        </div>
+    </div>
+
+    <script>
+        let imageData1 = null;
+        let imageData2 = null;
+        
+        // カメラ撮影機能
+        async function captureImage(previewId, buttonIndex) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                
+                // 一時的なビデオ要素を作成
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.play();
+                
+                // 撮影ボタンを表示
+                const takePictureBtn = document.createElement('button');
+                takePictureBtn.textContent = '撮影する';
+                
+                const preview = document.getElementById(previewId);
+                preview.innerHTML = '';
+                preview.appendChild(video);
+                preview.appendChild(takePictureBtn);
+                
+                takePictureBtn.onclick = () => {
+                    // キャンバスを作成して画像をキャプチャ
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0);
+                    
+                    // ストリームを停止
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    // 画像をプレビューに表示
+                    const img = document.createElement('img');
+                    img.src = canvas.toDataURL('image/png');
+                    preview.innerHTML = '';
+                    preview.appendChild(img);
+                    
+                    // 画像データを保存
+                    if (buttonIndex === 1) {
+                        imageData1 = canvas.toDataURL('image/png');
+                        document.getElementById('captureBtn2').disabled = false;
+                    } else {
+                        imageData2 = canvas.toDataURL('image/png');
+                        document.getElementById('compareBtn').disabled = false;
+                    }
+                };
+            } catch (err) {
+                console.error('カメラへのアクセスに失敗しました:', err);
+                alert('カメラへのアクセスに失敗しました。カメラの使用許可を確認してください。');
+            }
+        }
+        
+        // OCRで文字抽出
+        async function extractText(imageData) {
+            try {
+                const result = await Tesseract.recognize(
+                    imageData,
+                    'jpn', // 日本語認識
+                    { logger: m => console.log(m) }
+                );
+                return result.data.text;
+            } catch (err) {
+                console.error('OCR処理に失敗しました:', err);
+                return '';
+            }
+        }
+        
+        // 共通文字列を検出
+        function findCommonStrings(text1, text2) {
+            // 各テキストを行に分割
+            const lines1 = text1.split('\n').filter(line => line.trim() !== '');
+            const lines2 = text2.split('\n').filter(line => line.trim() !== '');
+            
+            // 共通の行を探す
+            const commonLines = lines1.filter(line => 
+                lines2.some(l2 => l2.includes(line) || line.includes(l2))
+            );
+            
+            return commonLines;
+        }
+        
+        // ボタンにイベントリスナーを設定
+        document.getElementById('captureBtn1').addEventListener('click', () => {
+            captureImage('preview1', 1);
+        });
+        
+        document.getElementById('captureBtn2').addEventListener('click', () => {
+            captureImage('preview2', 2);
+        });
+        
+        document.getElementById('compareBtn').addEventListener('click', async () => {
+            // 結果表示領域をクリア
+            const resultDiv = document.getElementById('result');
+            resultDiv.textContent = '処理中...';
+            
+            // OCRで文字抽出
+            const text1 = await extractText(imageData1);
+            const text2 = await extractText(imageData2);
+            
+            // 共通文字列を検出
+            const commonStrings = findCommonStrings(text1, text2);
+            
+            // 結果を表示
+            if (commonStrings.length > 0) {
+                resultDiv.innerHTML = '<h3>共通の文字列:</h3>' +
+                    commonStrings.map(s => `<p>${s}</p>`).join('');
+            } else {
+                resultDiv.textContent = '共通の文字列は見つかりませんでした。';
+            }
+        });
+    </script>
+</body>
+</html>
