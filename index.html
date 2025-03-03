@@ -32,6 +32,18 @@
             width: 100%;
             border-radius: 4px;
         }
+        .overlay-container {
+            position: relative;
+            width: 100%;
+        }
+        .text-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
         button {
             background-color: #4CAF50;
             border: none;
@@ -102,15 +114,43 @@
             background-color: white;
             border-bottom: 2px solid white;
         }
-        .preview-container {
-            display: flex;
-            gap: 10px;
+        .text-highlight {
+            position: absolute;
+            background-color: rgba(255, 255, 0, 0.3);
+            border: 1px solid rgba(255, 200, 0, 0.8);
+            border-radius: 2px;
         }
-        .preview-box {
-            flex: 1;
-            border: 1px solid #ccc;
-            padding: 10px;
-            border-radius: 8px;
+        .text-match-highlight {
+            background-color: rgba(0, 255, 0, 0.3);
+            border: 1px solid rgba(0, 200, 0, the0.8);
+        }
+        .overlay-controls {
+            margin-top: 10px;
+        }
+        .word-highlight {
+            position: absolute;
+            background-color: rgba(255, 255, 0, 0.3);
+            border: 1px solid rgba(255, 200, 0, 0.8);
+            border-radius: 2px;
+            padding: 2px;
+            font-size: 12px;
+            color: #000;
+            pointer-events: none;
+        }
+        .word-text {
+            position: absolute;
+            font-size: 10px;
+            color: #000;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 2px;
+            border-radius: 2px;
+            top: -18px;
+            left: 0;
+            white-space: nowrap;
+        }
+        .match-highlight {
+            background-color: rgba(0, 255, 0, 0.4);
+            border-color: rgba(0, 200, 0, 0.9);
         }
     </style>
 </head>
@@ -160,6 +200,13 @@
             <span id="thresholdValueDisplay" class="slider-value">128</span>
         </div>
         
+        <div class="overlay-controls">
+            <label>
+                <input type="checkbox" id="showTextOverlay" checked>
+                テキスト認識結果を表示
+            </label>
+        </div>
+        
         <div class="tabs">
             <div id="origTab" class="tab active">元画像</div>
             <div id="processedTab" class="tab">処理後</div>
@@ -168,12 +215,18 @@
         <div class="image-container" id="originalImages">
             <div class="image-box">
                 <h3>画像 1</h3>
-                <img id="photo1" alt="撮影した画像1">
+                <div class="overlay-container">
+                    <img id="photo1" alt="撮影した画像1">
+                    <div id="overlay1" class="text-overlay"></div>
+                </div>
                 <div id="text1"></div>
             </div>
             <div class="image-box">
                 <h3>画像 2</h3>
-                <img id="photo2" alt="撮影した画像2">
+                <div class="overlay-container">
+                    <img id="photo2" alt="撮影した画像2">
+                    <div id="overlay2" class="text-overlay"></div>
+                </div>
                 <div id="text2"></div>
             </div>
         </div>
@@ -181,11 +234,17 @@
         <div class="image-container" id="processedImages" style="display: none;">
             <div class="image-box">
                 <h3>処理後画像 1</h3>
-                <img id="processed1" alt="処理後画像1">
+                <div class="overlay-container">
+                    <img id="processed1" alt="処理後画像1">
+                    <div id="processedOverlay1" class="text-overlay"></div>
+                </div>
             </div>
             <div class="image-box">
                 <h3>処理後画像 2</h3>
-                <img id="processed2" alt="処理後画像2">
+                <div class="overlay-container">
+                    <img id="processed2" alt="処理後画像2">
+                    <div id="processedOverlay2" class="text-overlay"></div>
+                </div>
             </div>
         </div>
         
@@ -211,6 +270,11 @@
             text1: [],
             text2: []
         };
+        let recognizedWords = {
+            image1: [],
+            image2: []
+        };
+        let matchedTextList = [];
         
         // DOM要素
         const video = document.getElementById('video');
@@ -221,9 +285,14 @@
         const photo2 = document.getElementById('photo2');
         const processed1 = document.getElementById('processed1');
         const processed2 = document.getElementById('processed2');
+        const overlay1 = document.getElementById('overlay1');
+        const overlay2 = document.getElementById('overlay2');
+        const processedOverlay1 = document.getElementById('processedOverlay1');
+        const processedOverlay2 = document.getElementById('processedOverlay2');
         const text1Div = document.getElementById('text1');
         const text2Div = document.getElementById('text2');
         const matchedTextDiv = document.getElementById('matchedText');
+        const showTextOverlay = document.getElementById('showTextOverlay');
         
         // 前処理オプション
         const enablePreprocessing = document.getElementById('enablePreprocessing');
@@ -241,6 +310,21 @@
         const processedTab = document.getElementById('processedTab');
         const originalImages = document.getElementById('originalImages');
         const processedImages = document.getElementById('processedImages');
+        
+        // テキストオーバーレイの表示/非表示
+        showTextOverlay.addEventListener('change', () => {
+            if (showTextOverlay.checked) {
+                overlay1.style.display = 'block';
+                overlay2.style.display = 'block';
+                processedOverlay1.style.display = 'block';
+                processedOverlay2.style.display = 'block';
+            } else {
+                overlay1.style.display = 'none';
+                overlay2.style.display = 'none';
+                processedOverlay1.style.display = 'none';
+                processedOverlay2.style.display = 'none';
+            }
+        });
         
         // スライダー値の表示を更新
         contrastSlider.addEventListener('input', () => {
@@ -314,9 +398,9 @@
                 
                 // 前処理された画像からテキスト抽出
                 if (enablePreprocessing.checked) {
-                    extractText(processedImgData, 'text1');
+                    extractTextWithLocation(processedImgData, 'text1', 'image1');
                 } else {
-                    extractText(imgData, 'text1');
+                    extractTextWithLocation(imgData, 'text1', 'image1');
                 }
                 
                 currentImageNum = 2;
@@ -332,9 +416,9 @@
                 
                 // 前処理された画像からテキスト抽出
                 if (enablePreprocessing.checked) {
-                    extractText(processedImgData, 'text2');
+                    extractTextWithLocation(processedImgData, 'text2', 'image2');
                 } else {
-                    extractText(imgData, 'text2');
+                    extractTextWithLocation(imgData, 'text2', 'image2');
                 }
                 
                 // 比較ボタンを有効化
@@ -359,215 +443,6 @@
         // 画像の前処理
         function preprocessImage(imageData) {
             // 前処理が無効なら元の画像を返す
-            if (!enablePreprocessing.checked) {
-                return imageData;
-            }
-            
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    
-                    // 元の画像を描画
-                    ctx.drawImage(img, 0, 0);
-                    
-                    // ピクセルデータを取得
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const data = imageData.data;
-                    
-                    const contrast = contrastSlider.value / 100;
-                    const brightness = brightnessSlider.value / 100;
-                    const thresholdValue = parseInt(thresholdSlider.value);
-                    
-                    // コントラストと明るさの調整
-                    for (let i = 0; i < data.length; i += 4) {
-                        // RGB値の取得
-                        let r = data[i];
-                        let g = data[i + 1];
-                        let b = data[i + 2];
-                        
-                        // グレースケール処理（必要な場合）
-                        if (grayscaleOption.checked) {
-                            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                            r = g = b = gray;
-                        }
-                        
-                        // コントラストと明るさの適用
-                        r = ((r / 255 - 0.5) * contrast + 0.5) * 255 * brightness;
-                        g = ((g / 255 - 0.5) * contrast + 0.5) * 255 * brightness;
-                        b = ((b / 255 - 0.5) * contrast + 0.5) * 255 * brightness;
-                        
-                        // 二値化（しきい値処理）
-                        if (thresholdOption.checked) {
-                            const avg = (r + g + b) / 3;
-                            r = g = b = avg > thresholdValue ? 255 : 0;
-                        }
-                        
-                        // 値の範囲を0-255に制限
-                        data[i] = Math.min(255, Math.max(0, r));
-                        data[i + 1] = Math.min(255, Math.max(0, g));
-                        data[i + 2] = Math.min(255, Math.max(0, b));
-                    }
-                    
-                    // 処理後の画像データをキャンバスに戻す
-                    ctx.putImageData(imageData, 0, 0);
-                    
-                    // 処理後の画像をデータURLとして返す
-                    resolve(canvas.toDataURL('image/png'));
-                };
-                
-                img.src = imageData;
-            }).then(processedImageData => {
-                return processedImageData;
-            });
-        }
-
-        // テキスト抽出
-        function extractText(imageData, textId) {
-            Tesseract.recognize(
-                imageData,
-                'jpn+eng', // 日本語と英語を認識
-                { 
-                    logger: m => console.log(m),
-                    // OCRの設定をカスタマイズ
-                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん .,:-',
-                    // ブロック検出モードを調整
-                    tessjs_create_box: '1',
-                    tessjs_create_hocr: '1',
-                    tessjs_create_tsv: '1'
-                }
-            ).then(({ data: { text, lines } }) => {
-                const textArray = text.split('\n').filter(line => line.trim().length > 0);
-                
-                // 行ごとのテキストを保存
-                if (textId === 'text1') {
-                    extractedTexts.text1 = textArray;
-                    text1Div.innerHTML = textArray.map(line => `<p>${line}</p>`).join('');
-                } else {
-                    extractedTexts.text2 = textArray;
-                    text2Div.innerHTML = textArray.map(line => `<p>${line}</p>`).join('');
-                }
-            });
-        }
-
-        // テキスト比較
-        function compareTexts() {
-            const text1 = extractedTexts.text1;
-            const text2 = extractedTexts.text2;
-            
-            // 一致する行を検索
-            const matchedLines = [];
-            
-            for (const line1 of text1) {
-                if (line1.trim().length <= 3) continue; // 短すぎる行は除外
-                
-                for (const line2 of text2) {
-                    if (line2.trim().length <= 3) continue; // 短すぎる行は除外
-                    
-                    // 完全一致
-                    if (line1 === line2) {
-                        if (!matchedLines.includes(line1)) {
-                            matchedLines.push(line1);
-                        }
-                        continue;
-                    }
-                    
-                    // 部分一致（一定の長さ以上の共通部分文字列を検出）
-                    const minLength = Math.min(line1.length, line2.length);
-                    const threshold = Math.max(4, Math.floor(minLength * 0.6)); // 最低4文字または60%以上の一致
-                    
-                    // 共通部分文字列を検索
-                    let longestCommon = findLongestCommonSubstring(line1, line2);
-                    if (longestCommon.length >= threshold) {
-                        if (!matchedLines.includes(line1)) {
-                            matchedLines.push(line1);
-                        }
-                    }
-                }
-            }
-            
-            // 結果表示
-            if (matchedLines.length > 0) {
-                matchedTextDiv.innerHTML = matchedLines.map(line => 
-                    `<div class="matched">${line}</div>`
-                ).join('');
-            } else {
-                matchedTextDiv.innerHTML = "<p>一致するテキストが見つかりませんでした。</p>";
-            }
-        }
-        
-        // 最長共通部分文字列を見つける関数
-        function findLongestCommonSubstring(str1, str2) {
-            if (!str1 || !str2) {
-                return '';
-            }
-            
-            let longestSubstring = '';
-            const str1Length = str1.length;
-            const str2Length = str2.length;
-            
-            // 動的計画法を使用して最長共通部分文字列を見つける
-            const dp = Array(str1Length + 1).fill().map(() => Array(str2Length + 1).fill(0));
-            
-            for (let i = 1; i <= str1Length; i++) {
-                for (let j = 1; j <= str2Length; j++) {
-                    if (str1[i - 1] === str2[j - 1]) {
-                        dp[i][j] = dp[i - 1][j - 1] + 1;
-                        
-                        if (dp[i][j] > longestSubstring.length) {
-                            longestSubstring = str1.substring(i - dp[i][j], i);
-                        }
-                    }
-                }
-            }
-            
-            return longestSubstring;
-        }
-
-        // リセット機能
-        function resetApp() {
-            currentImageNum = 1;
-            capturedImages = {
-                photo1: null,
-                photo2: null,
-                processed1: null,
-                processed2: null
-            };
-            extractedTexts = {
-                text1: [],
-                text2: []
-            };
-            
-            photo1.src = "";
-            photo2.src = "";
-            processed1.src = "";
-            processed2.src = "";
-            text1Div.innerHTML = "";
-            text2Div.innerHTML = "";
-            matchedTextDiv.innerHTML = "";
-            
-            captureBtn.disabled = false;
-            compareBtn.disabled = true;
-            
-            // タブをリセット
-            origTab.click();
-        }
-
-        // イベントリスナー
-        captureBtn.addEventListener('click', captureImage);
-        compareBtn.addEventListener('click', compareTexts);
-        resetBtn.addEventListener('click', resetApp);
-
-        // 初期化
-        initCamera();
-        
-        // 非同期の前処理関数をすぐに使えるように同期バージョンに変換
-        const originalPreprocessImage = preprocessImage;
-        preprocessImage = function(imageData) {
             if (!enablePreprocessing.checked) {
                 return imageData;
             }
@@ -627,7 +502,246 @@
             
             // 処理後の画像をデータURLとして返す
             return canvas.toDataURL('image/png');
-        };
+        }
+
+        // 位置情報付きでテキスト抽出
+        function extractTextWithLocation(imageData, textId, imageId) {
+            Tesseract.recognize(
+                imageData,
+                'jpn+eng', // 日本語と英語を認識
+                { 
+                    logger: m => console.log(m)
+                }
+            ).then(({ data }) => {
+                // 認識されたテキストを行単位で保存
+                const textArray = data.text.split('\n').filter(line => line.trim().length > 0);
+                
+                if (textId === 'text1') {
+                    extractedTexts.text1 = textArray;
+                    text1Div.innerHTML = textArray.map(line => `<p>${line}</p>`).join('');
+                } else {
+                    extractedTexts.text2 = textArray;
+                    text2Div.innerHTML = textArray.map(line => `<p>${line}</p>`).join('');
+                }
+                
+                // 単語レベルの位置情報を保存
+                const words = [];
+                
+                data.words.forEach(word => {
+                    if (word.text.trim().length > 0) {
+                        words.push({
+                            text: word.text,
+                            bbox: {
+                                x0: word.bbox.x0,
+                                y0: word.bbox.y0,
+                                x1: word.bbox.x1,
+                                y1: word.bbox.y1
+                            },
+                            confidence: word.confidence
+                        });
+                    }
+                });
+                
+                if (imageId === 'image1') {
+                    recognizedWords.image1 = words;
+                    // 単語のオーバーレイを表示
+                    displayWordOverlays(words, overlay1, processedOverlay1);
+                } else {
+                    recognizedWords.image2 = words;
+                    // 単語のオーバーレイを表示
+                    displayWordOverlays(words, overlay2, processedOverlay2);
+                }
+            });
+        }
+        
+        // 単語オーバーレイを表示
+        function displayWordOverlays(words, overlayElement, processedOverlayElement) {
+            // オーバーレイをクリア
+            overlayElement.innerHTML = '';
+            processedOverlayElement.innerHTML = '';
+            
+            // 画像のサイズを取得
+            const imgWidth = overlayElement.parentElement.offsetWidth;
+            const originalWidth = words.length > 0 ? Math.max(...words.map(w => w.bbox.x1)) : 0;
+            
+            // スケール係数を計算
+            const scale = imgWidth / originalWidth;
+            
+            // 各単語に対してハイライト要素を作成
+            words.forEach(word => {
+                // 元画像用のオーバーレイ
+                const highlightDiv = document.createElement('div');
+                highlightDiv.className = 'word-highlight';
+                
+                // 位置を調整
+                highlightDiv.style.left = (word.bbox.x0 * scale) + 'px';
+                highlightDiv.style.top = (word.bbox.y0 * scale) + 'px';
+                highlightDiv.style.width = ((word.bbox.x1 - word.bbox.x0) * scale) + 'px';
+                highlightDiv.style.height = ((word.bbox.y1 - word.bbox.y0) * scale) + 'px';
+                
+                // テキストのラベルを追加
+                const textLabel = document.createElement('div');
+                textLabel.className = 'word-text';
+                textLabel.textContent = word.text;
+                highlightDiv.appendChild(textLabel);
+                
+                // データ属性に単語のテキストを設定（後で一致チェックに使用）
+                highlightDiv.dataset.text = word.text;
+                
+                // オーバーレイに追加
+                overlayElement.appendChild(highlightDiv);
+                
+                // 処理後画像用のオーバーレイ（同じものをコピー）
+                const processedHighlightDiv = highlightDiv.cloneNode(true);
+                processedOverlayElement.appendChild(processedHighlightDiv);
+            });
+        }
+
+        // テキスト比較
+        function compareTexts() {
+            const text1 = extractedTexts.text1;
+            const text2 = extractedTexts.text2;
+            
+            // 一致する行を検索
+            matchedTextList = []; // リセット
+            
+            for (const line1 of text1) {
+                if (line1.trim().length <= 3) continue; // 短すぎる行は除外
+                
+                for (const line2 of text2) {
+                    if (line2.trim().length <= 3) continue; // 短すぎる行は除外
+                    
+                    // 完全一致
+                    if (line1 === line2) {
+                        if (!matchedTextList.includes(line1)) {
+                            matchedTextList.push(line1);
+                        }
+                        continue;
+                    }
+                    
+                    // 部分一致（一定の長さ以上の共通部分文字列を検出）
+                    const minLength = Math.min(line1.length, line2.length);
+                    const threshold = Math.max(4, Math.floor(minLength * 0.6)); // 最低4文字または60%以上の一致
+                    
+                    // 共通部分文字列を検索
+                    let longestCommon = findLongestCommonSubstring(line1, line2);
+                    if (longestCommon.length >= threshold) {
+                        if (!matchedTextList.includes(line1)) {
+                            matchedTextList.push(line1);
+                        }
+                    }
+                }
+            }
+            
+            // 結果表示
+            if (matchedTextList.length > 0) {
+                matchedTextDiv.innerHTML = matchedTextList.map(line => 
+                    `<div class="matched">${line}</div>`
+                ).join('');
+                
+                // ハイライト表示を更新
+                highlightMatchedText();
+            } else {
+                matchedTextDiv.innerHTML = "<p>一致するテキストが見つかりませんでした。</p>";
+            }
+        }
+        
+        // 一致したテキストをハイライト表示
+        function highlightMatchedText() {
+            // 両方の画像のオーバーレイ内のすべての単語ハイライトをリセット
+            const allHighlights = document.querySelectorAll('.word-highlight');
+            allHighlights.forEach(highlight => {
+                highlight.classList.remove('match-highlight');
+            });
+            
+            // 一致するテキストを含む単語をハイライト
+            matchedTextList.forEach(matchedText => {
+                // 各単語に対して、その単語が一致テキストの一部かをチェック
+                allHighlights.forEach(highlight => {
+                    const wordText = highlight.dataset.text;
+                    
+                    // 単語が一致テキストに含まれているか、またはその逆をチェック
+                    if ((matchedText.includes(wordText) || wordText.includes(matchedText)) && 
+                        wordText.length > 1) { // 単一文字は除外
+                        highlight.classList.add('match-highlight');
+                    }
+                });
+            });
+        }
+        
+        // 最長共通部分文字列を見つける関数
+        function findLongestCommonSubstring(str1, str2) {
+            if (!str1 || !str2) {
+                return '';
+            }
+            
+            let longestSubstring = '';
+            const str1Length = str1.length;
+            const str2Length = str2.length;
+            
+            // 動的計画法を使用して最長共通部分文字列を見つける
+            const dp = Array(str1Length + 1).fill().map(() => Array(str2Length + 1).fill(0));
+            
+            for (let i = 1; i <= str1Length; i++) {
+                for (let j = 1; j <= str2Length; j++) {
+                    if (str1[i - 1] === str2[j - 1]) {
+                        dp[i][j] = dp[i - 1][j - 1] + 1;
+                        
+                        if (dp[i][j] > longestSubstring.length) {
+                            longestSubstring = str1.substring(i - dp[i][j], i);
+                        }
+                    }
+                }
+            }
+            
+            return longestSubstring;
+        }
+
+        // リセット機能
+        function resetApp() {
+            currentImageNum = 1;
+            capturedImages = {
+                photo1: null,
+                photo2: null,
+                processed1: null,
+                processed2: null
+            };
+            extractedTexts = {
+                text1: [],
+                text2: []
+            };
+            recognizedWords = {
+                image1: [],
+                image2: []
+            };
+            matchedTextList = [];
+            
+            photo1.src = "";
+            photo2.src = "";
+            processed1.src = "";
+            processed2.src = "";
+            text1Div.innerHTML = "";
+            text2Div.innerHTML = "";
+            matchedTextDiv.innerHTML = "";
+            overlay1.innerHTML = "";
+            overlay2.innerHTML = "";
+            processedOverlay1.innerHTML = "";
+            processedOverlay2.innerHTML = "";
+            
+            captureBtn.disabled = false;
+            compareBtn.disabled = true;
+            
+            // タブをリセット
+            origTab.click();
+        }
+
+        // イベントリスナー
+        captureBtn.addEventListener('click', captureImage);
+        compareBtn.addEventListener('click', compareTexts);
+        resetBtn.addEventListener('click', resetApp);
+
+        // 初期化
+        initCamera();
     </script>
 </body>
 </html>
