@@ -3,195 +3,243 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>共通文字列検出アプリ</title>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js"></script>
+    <title>画像テキスト比較アプリ</title>
     <style>
         body {
-            font-family: sans-serif;
-            max-width: 500px;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            max-width: 600px;
             margin: 0 auto;
             padding: 20px;
+            text-align: center;
         }
         .container {
             display: flex;
             flex-direction: column;
             gap: 20px;
         }
-        .camera-section {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .preview-container {
+        .image-container {
             display: flex;
             justify-content: space-between;
             gap: 10px;
         }
-        .preview {
-            width: 48%;
-            height: 150px;
+        .image-box {
+            flex: 1;
             border: 1px solid #ccc;
-            background-color: #f0f0f0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            padding: 10px;
+            border-radius: 8px;
         }
-        .preview img {
-            max-width: 100%;
-            max-height: 100%;
+        video, canvas, img {
+            width: 100%;
+            border-radius: 4px;
         }
         button {
-            padding: 10px;
-            background-color: #4285f4;
-            color: white;
+            background-color: #4CAF50;
             border: none;
-            border-radius: 5px;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
             cursor: pointer;
+            border-radius: 4px;
         }
         button:disabled {
-            background-color: #ccc;
+            background-color: #cccccc;
         }
-        .result {
-            padding: 15px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            min-height: 100px;
+        #results {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            text-align: left;
+        }
+        .matched {
+            background-color: #e6ffe6;
+            padding: 5px;
+            margin: 5px 0;
+            border-radius: 4px;
         }
     </style>
 </head>
 <body>
+    <h1>画像テキスト比較アプリ</h1>
     <div class="container">
-        <h1>共通文字列検出アプリ</h1>
-        
-        <div class="camera-section">
-            <div class="preview-container">
-                <div class="preview" id="preview1">画像1</div>
-                <div class="preview" id="preview2">画像2</div>
-            </div>
-            <button id="captureBtn1">画像1を撮影</button>
-            <button id="captureBtn2" disabled>画像2を撮影</button>
-            <button id="compareBtn" disabled>文字列を比較</button>
+        <div class="camera-container">
+            <video id="video" autoplay playsinline></video>
         </div>
         
         <div>
-            <h2>検出結果</h2>
-            <div class="result" id="result">結果がここに表示されます</div>
+            <button id="captureBtn">写真を撮影</button>
+            <button id="compareBtn" disabled>テキストを比較</button>
+            <button id="resetBtn">リセット</button>
+        </div>
+        
+        <div class="image-container">
+            <div class="image-box">
+                <h3>画像 1</h3>
+                <img id="photo1" alt="撮影した画像1">
+                <div id="text1"></div>
+            </div>
+            <div class="image-box">
+                <h3>画像 2</h3>
+                <img id="photo2" alt="撮影した画像2">
+                <div id="text2"></div>
+            </div>
+        </div>
+        
+        <div id="results">
+            <h3>一致したテキスト:</h3>
+            <div id="matchedText"></div>
         </div>
     </div>
 
+    <!-- Tesseract.js のインポート -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/2.1.5/tesseract.min.js"></script>
+    
     <script>
-        let imageData1 = null;
-        let imageData2 = null;
+        // 変数の初期化
+        let currentImageNum = 1;
+        let capturedImages = {
+            photo1: null,
+            photo2: null
+        };
+        let extractedTexts = {
+            text1: [],
+            text2: []
+        };
         
-        // カメラ撮影機能
-        async function captureImage(previewId, buttonIndex) {
+        // DOM要素
+        const video = document.getElementById('video');
+        const captureBtn = document.getElementById('captureBtn');
+        const compareBtn = document.getElementById('compareBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const photo1 = document.getElementById('photo1');
+        const photo2 = document.getElementById('photo2');
+        const text1Div = document.getElementById('text1');
+        const text2Div = document.getElementById('text2');
+        const matchedTextDiv = document.getElementById('matchedText');
+
+        // カメラを初期化
+        async function initCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                
-                // 一時的なビデオ要素を作成
-                const video = document.createElement('video');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" },
+                    audio: false 
+                });
                 video.srcObject = stream;
-                video.play();
-                
-                // 撮影ボタンを表示
-                const takePictureBtn = document.createElement('button');
-                takePictureBtn.textContent = '撮影する';
-                
-                const preview = document.getElementById(previewId);
-                preview.innerHTML = '';
-                preview.appendChild(video);
-                preview.appendChild(takePictureBtn);
-                
-                takePictureBtn.onclick = () => {
-                    // キャンバスを作成して画像をキャプチャ
-                    const canvas = document.createElement('canvas');
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(video, 0, 0);
-                    
-                    // ストリームを停止
-                    stream.getTracks().forEach(track => track.stop());
-                    
-                    // 画像をプレビューに表示
-                    const img = document.createElement('img');
-                    img.src = canvas.toDataURL('image/png');
-                    preview.innerHTML = '';
-                    preview.appendChild(img);
-                    
-                    // 画像データを保存
-                    if (buttonIndex === 1) {
-                        imageData1 = canvas.toDataURL('image/png');
-                        document.getElementById('captureBtn2').disabled = false;
-                    } else {
-                        imageData2 = canvas.toDataURL('image/png');
-                        document.getElementById('compareBtn').disabled = false;
-                    }
-                };
             } catch (err) {
-                console.error('カメラへのアクセスに失敗しました:', err);
-                alert('カメラへのアクセスに失敗しました。カメラの使用許可を確認してください。');
+                console.error("カメラへのアクセスに失敗しました:", err);
+                alert("カメラへのアクセスに失敗しました。カメラの許可を確認してください。");
             }
         }
-        
-        // OCRで文字抽出
-        async function extractText(imageData) {
-            try {
-                const result = await Tesseract.recognize(
-                    imageData,
-                    'jpn', // 日本語認識
-                    { logger: m => console.log(m) }
-                );
-                return result.data.text;
-            } catch (err) {
-                console.error('OCR処理に失敗しました:', err);
-                return '';
-            }
-        }
-        
-        // 共通文字列を検出
-        function findCommonStrings(text1, text2) {
-            // 各テキストを行に分割
-            const lines1 = text1.split('\n').filter(line => line.trim() !== '');
-            const lines2 = text2.split('\n').filter(line => line.trim() !== '');
+
+        // 画像をキャプチャ
+        function captureImage() {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            // 共通の行を探す
-            const commonLines = lines1.filter(line => 
-                lines2.some(l2 => l2.includes(line) || line.includes(l2))
+            const imgData = canvas.toDataURL('image/png');
+            
+            if (currentImageNum === 1) {
+                photo1.src = imgData;
+                capturedImages.photo1 = imgData;
+                text1Div.innerHTML = "<p>テキスト解析中...</p>";
+                
+                // 1枚目の画像からテキスト抽出
+                extractText(imgData, 'text1');
+                currentImageNum = 2;
+            } else {
+                photo2.src = imgData;
+                capturedImages.photo2 = imgData;
+                text2Div.innerHTML = "<p>テキスト解析中...</p>";
+                
+                // 2枚目の画像からテキスト抽出
+                extractText(imgData, 'text2');
+                
+                // 比較ボタンを有効化
+                captureBtn.disabled = true;
+                compareBtn.disabled = false;
+            }
+        }
+
+        // テキスト抽出
+        function extractText(imageData, textId) {
+            Tesseract.recognize(
+                imageData,
+                'jpn+eng', // 日本語と英語を認識
+                { logger: m => console.log(m) }
+            ).then(({ data: { text, lines } }) => {
+                const textArray = text.split('\n').filter(line => line.trim().length > 0);
+                
+                // 行ごとのテキストを保存
+                if (textId === 'text1') {
+                    extractedTexts.text1 = textArray;
+                    text1Div.innerHTML = textArray.map(line => `<p>${line}</p>`).join('');
+                } else {
+                    extractedTexts.text2 = textArray;
+                    text2Div.innerHTML = textArray.map(line => `<p>${line}</p>`).join('');
+                }
+            });
+        }
+
+        // テキスト比較
+        function compareTexts() {
+            const text1 = extractedTexts.text1;
+            const text2 = extractedTexts.text2;
+            
+            // 一致する行を検索
+            const matchedLines = text1.filter(line => 
+                text2.some(t2Line => 
+                    line.trim().length > 3 && // 短すぎる行は除外
+                    t2Line.trim().length > 3 && 
+                    (t2Line.includes(line) || line.includes(t2Line))
+                )
             );
             
-            return commonLines;
-        }
-        
-        // ボタンにイベントリスナーを設定
-        document.getElementById('captureBtn1').addEventListener('click', () => {
-            captureImage('preview1', 1);
-        });
-        
-        document.getElementById('captureBtn2').addEventListener('click', () => {
-            captureImage('preview2', 2);
-        });
-        
-        document.getElementById('compareBtn').addEventListener('click', async () => {
-            // 結果表示領域をクリア
-            const resultDiv = document.getElementById('result');
-            resultDiv.textContent = '処理中...';
-            
-            // OCRで文字抽出
-            const text1 = await extractText(imageData1);
-            const text2 = await extractText(imageData2);
-            
-            // 共通文字列を検出
-            const commonStrings = findCommonStrings(text1, text2);
-            
-            // 結果を表示
-            if (commonStrings.length > 0) {
-                resultDiv.innerHTML = '<h3>共通の文字列:</h3>' +
-                    commonStrings.map(s => `<p>${s}</p>`).join('');
+            // 結果表示
+            if (matchedLines.length > 0) {
+                matchedTextDiv.innerHTML = matchedLines.map(line => 
+                    `<div class="matched">${line}</div>`
+                ).join('');
             } else {
-                resultDiv.textContent = '共通の文字列は見つかりませんでした。';
+                matchedTextDiv.innerHTML = "<p>一致するテキストが見つかりませんでした。</p>";
             }
-        });
+        }
+
+        // リセット機能
+        function resetApp() {
+            currentImageNum = 1;
+            capturedImages = {
+                photo1: null,
+                photo2: null
+            };
+            extractedTexts = {
+                text1: [],
+                text2: []
+            };
+            
+            photo1.src = "";
+            photo2.src = "";
+            text1Div.innerHTML = "";
+            text2Div.innerHTML = "";
+            matchedTextDiv.innerHTML = "";
+            
+            captureBtn.disabled = false;
+            compareBtn.disabled = true;
+        }
+
+        // イベントリスナー
+        captureBtn.addEventListener('click', captureImage);
+        compareBtn.addEventListener('click', compareTexts);
+        resetBtn.addEventListener('click', resetApp);
+
+        // 初期化
+        initCamera();
     </script>
 </body>
 </html>
