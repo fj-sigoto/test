@@ -28,6 +28,18 @@
             padding: 10px;
             border-radius: 8px;
         }
+        .processing-controls {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .processing-controls label {
+            margin-right: 10px;
+        }
+        .processing-controls input {
+            margin-bottom: 8px;
+        }
         video, canvas, img {
             width: 100%;
             border-radius: 4px;
@@ -48,6 +60,9 @@
         button:disabled {
             background-color: #cccccc;
         }
+        .secondary-btn {
+            background-color: #2196F3;
+        }
         #results {
             margin-top: 20px;
             padding: 10px;
@@ -61,11 +76,48 @@
             margin: 5px 0;
             border-radius: 4px;
         }
+        .processing-toggle {
+            margin-bottom: 10px;
+        }
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <h1>画像テキスト比較アプリ</h1>
     <div class="container">
+        <div class="processing-toggle">
+            <button id="toggleProcessingBtn" class="secondary-btn">画像前処理オプションを表示</button>
+        </div>
+        
+        <div id="processingControls" class="processing-controls hidden">
+            <h3>画像前処理オプション</h3>
+            <div>
+                <label for="grayscale">グレースケール:</label>
+                <input type="checkbox" id="grayscale" checked>
+            </div>
+            <div>
+                <label for="contrast">コントラスト:</label>
+                <input type="range" id="contrast" min="100" max="200" value="130">
+                <span id="contrastValue">130%</span>
+            </div>
+            <div>
+                <label for="brightness">明るさ:</label>
+                <input type="range" id="brightness" min="80" max="120" value="100">
+                <span id="brightnessValue">100%</span>
+            </div>
+            <div>
+                <label for="threshold">しきい値処理:</label>
+                <input type="checkbox" id="threshold">
+            </div>
+            <div>
+                <label for="thresholdValue">しきい値:</label>
+                <input type="range" id="thresholdValue" min="0" max="255" value="127">
+                <span id="thresholdValueDisplay">127</span>
+            </div>
+        </div>
+        
         <div class="camera-container">
             <video id="video" autoplay playsinline></video>
         </div>
@@ -80,11 +132,17 @@
             <div class="image-box">
                 <h3>画像 1</h3>
                 <img id="photo1" alt="撮影した画像1">
+                <canvas id="canvas1" style="display:none;"></canvas>
+                <h4>処理後:</h4>
+                <img id="processed1" alt="処理後の画像1">
                 <div id="text1"></div>
             </div>
             <div class="image-box">
                 <h3>画像 2</h3>
                 <img id="photo2" alt="撮影した画像2">
+                <canvas id="canvas2" style="display:none;"></canvas>
+                <h4>処理後:</h4>
+                <img id="processed2" alt="処理後の画像2">
                 <div id="text2"></div>
             </div>
         </div>
@@ -105,6 +163,10 @@
             photo1: null,
             photo2: null
         };
+        let processedImages = {
+            processed1: null,
+            processed2: null
+        };
         let extractedTexts = {
             text1: [],
             text2: []
@@ -117,9 +179,51 @@
         const resetBtn = document.getElementById('resetBtn');
         const photo1 = document.getElementById('photo1');
         const photo2 = document.getElementById('photo2');
+        const processed1 = document.getElementById('processed1');
+        const processed2 = document.getElementById('processed2');
+        const canvas1 = document.getElementById('canvas1');
+        const canvas2 = document.getElementById('canvas2');
         const text1Div = document.getElementById('text1');
         const text2Div = document.getElementById('text2');
         const matchedTextDiv = document.getElementById('matchedText');
+        const toggleProcessingBtn = document.getElementById('toggleProcessingBtn');
+        const processingControls = document.getElementById('processingControls');
+        
+        // 前処理コントロール
+        const grayscaleCheckbox = document.getElementById('grayscale');
+        const contrastSlider = document.getElementById('contrast');
+        const brightnessSlider = document.getElementById('brightness');
+        const thresholdCheckbox = document.getElementById('threshold');
+        const thresholdValueSlider = document.getElementById('thresholdValue');
+        const contrastValue = document.getElementById('contrastValue');
+        const brightnessValue = document.getElementById('brightnessValue');
+        const thresholdValueDisplay = document.getElementById('thresholdValueDisplay');
+        
+        // コントロール値更新リスナー
+        contrastSlider.addEventListener('input', () => {
+            contrastValue.textContent = `${contrastSlider.value}%`;
+            updateProcessedImages();
+        });
+        brightnessSlider.addEventListener('input', () => {
+            brightnessValue.textContent = `${brightnessSlider.value}%`;
+            updateProcessedImages();
+        });
+        thresholdValueSlider.addEventListener('input', () => {
+            thresholdValueDisplay.textContent = thresholdValueSlider.value;
+            updateProcessedImages();
+        });
+        grayscaleCheckbox.addEventListener('change', updateProcessedImages);
+        thresholdCheckbox.addEventListener('change', updateProcessedImages);
+        
+        // 前処理オプションの表示切替
+        toggleProcessingBtn.addEventListener('click', () => {
+            processingControls.classList.toggle('hidden');
+            if (processingControls.classList.contains('hidden')) {
+                toggleProcessingBtn.textContent = '画像前処理オプションを表示';
+            } else {
+                toggleProcessingBtn.textContent = '画像前処理オプションを隠す';
+            }
+        });
 
         // カメラを初期化
         async function initCamera() {
@@ -148,23 +252,108 @@
             if (currentImageNum === 1) {
                 photo1.src = imgData;
                 capturedImages.photo1 = imgData;
+                
+                // 画像を処理
+                processImage(imgData, canvas1, processed1, 'processed1');
                 text1Div.innerHTML = "<p>テキスト解析中...</p>";
                 
-                // 1枚目の画像からテキスト抽出
-                extractText(imgData, 'text1');
                 currentImageNum = 2;
             } else {
                 photo2.src = imgData;
                 capturedImages.photo2 = imgData;
-                text2Div.innerHTML = "<p>テキスト解析中...</p>";
                 
-                // 2枚目の画像からテキスト抽出
-                extractText(imgData, 'text2');
+                // 画像を処理
+                processImage(imgData, canvas2, processed2, 'processed2');
+                text2Div.innerHTML = "<p>テキスト解析中...</p>";
                 
                 // 比較ボタンを有効化
                 captureBtn.disabled = true;
                 compareBtn.disabled = false;
             }
+        }
+        
+        // 画像処理
+        function processImage(imageData, canvasElement, imgElement, imgKey) {
+            const img = new Image();
+            img.onload = function() {
+                // キャンバスのサイズを設定
+                canvasElement.width = img.width;
+                canvasElement.height = img.height;
+                const ctx = canvasElement.getContext('2d');
+
+                // 画像をキャンバスに描画
+                ctx.drawImage(img, 0, 0);
+                
+                // 画像データを取得
+                const imageData = ctx.getImageData(0, 0, canvasElement.width, canvasElement.height);
+                const data = imageData.data;
+                
+                // グレースケール処理
+                if (grayscaleCheckbox.checked) {
+                    for (let i = 0; i < data.length; i += 4) {
+                        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                        data[i] = avg;       // R
+                        data[i + 1] = avg;   // G
+                        data[i + 2] = avg;   // B
+                    }
+                }
+                
+                // コントラスト調整
+                const contrast = contrastSlider.value / 100;
+                const brightness = (brightnessSlider.value - 100) / 100;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    // コントラスト調整
+                    data[i] = applyContrast(data[i], contrast, brightness);
+                    data[i + 1] = applyContrast(data[i + 1], contrast, brightness);
+                    data[i + 2] = applyContrast(data[i + 2], contrast, brightness);
+                }
+                
+                // しきい値処理
+                if (thresholdCheckbox.checked) {
+                    const threshold = parseInt(thresholdValueSlider.value);
+                    for (let i = 0; i < data.length; i += 4) {
+                        const v = (data[i] + data[i + 1] + data[i + 2]) / 3 >= threshold ? 255 : 0;
+                        data[i] = v;       // R
+                        data[i + 1] = v;   // G
+                        data[i + 2] = v;   // B
+                    }
+                }
+                
+                // 処理した画像を描画
+                ctx.putImageData(imageData, 0, 0);
+                
+                // 処理された画像のDataURLを取得
+                const processedImageData = canvasElement.toDataURL('image/png');
+                imgElement.src = processedImageData;
+                processedImages[imgKey] = processedImageData;
+                
+                // OCRを実行
+                extractText(processedImageData, imgKey === 'processed1' ? 'text1' : 'text2');
+            };
+            img.src = imageData;
+        }
+        
+        // 既にキャプチャした画像を再処理
+        function updateProcessedImages() {
+            if (capturedImages.photo1) {
+                processImage(capturedImages.photo1, canvas1, processed1, 'processed1');
+            }
+            if (capturedImages.photo2) {
+                processImage(capturedImages.photo2, canvas2, processed2, 'processed2');
+            }
+        }
+        
+        // コントラストと明るさを適用
+        function applyContrast(value, contrast, brightness) {
+            // 明るさを適用（-1.0〜1.0の範囲）
+            value = value + (brightness * 255);
+            
+            // コントラストを適用
+            value = (value - 128) * contrast + 128;
+            
+            // 0〜255の範囲に制限
+            return Math.max(0, Math.min(255, value));
         }
 
         // テキスト抽出
@@ -218,6 +407,10 @@
                 photo1: null,
                 photo2: null
             };
+            processedImages = {
+                processed1: null,
+                processed2: null
+            };
             extractedTexts = {
                 text1: [],
                 text2: []
@@ -225,6 +418,8 @@
             
             photo1.src = "";
             photo2.src = "";
+            processed1.src = "";
+            processed2.src = "";
             text1Div.innerHTML = "";
             text2Div.innerHTML = "";
             matchedTextDiv.innerHTML = "";
