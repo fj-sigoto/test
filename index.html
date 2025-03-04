@@ -3,164 +3,183 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>カメラ画像テキスト認識</title>
+    <title>スマホOCRアプリ</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: sans-serif;
             margin: 0;
-            padding: 16px;
-            background-color: #f5f5f5;
+            padding: 0;
+            background: #f0f0f0;
         }
-        .container {
-            max-width: 600px;
+        .app {
+            max-width: 100%;
             margin: 0 auto;
-            background-color: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 10px;
+        }
+        header {
+            background: #007bff;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
         }
         h1 {
+            margin: 0;
             font-size: 1.5rem;
-            text-align: center;
-            margin-bottom: 20px;
         }
         .camera-container {
-            width: 100%;
-            margin-bottom: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         #video {
             width: 100%;
             border-radius: 8px;
             display: block;
         }
-        #canvas {
-            display: none;
-        }
         #preview {
             width: 100%;
             border-radius: 8px;
             display: none;
-            margin-bottom: 10px;
         }
         .button {
-            background-color: #4285f4;
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #007bff;
             color: white;
             border: none;
-            padding: 12px 0;
             border-radius: 8px;
             font-size: 1rem;
-            width: 100%;
-            margin-bottom: 10px;
-            cursor: pointer;
+            font-weight: bold;
         }
         .button:disabled {
-            background-color: #cccccc;
+            background: #cccccc;
         }
-        #result-container {
+        #result {
             margin-top: 20px;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
+            background: white;
             padding: 15px;
-            background-color: #f9f9f9;
-        }
-        #recognized-text {
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             white-space: pre-wrap;
-            font-size: 1rem;
-            line-height: 1.5;
         }
-        .loading {
-            text-align: center;
-            margin: 20px 0;
+        #loading {
             display: none;
+            text-align: center;
+            padding: 20px;
         }
-        .loader {
+        .spinner {
             border: 4px solid #f3f3f3;
-            border-top: 4px solid #4285f4;
+            border-top: 4px solid #007bff;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 30px;
+            height: 30px;
             animation: spin 1s linear infinite;
-            margin: 0 auto;
+            margin: 0 auto 10px;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .error {
+        #error {
             color: red;
+            padding: 10px;
             text-align: center;
-            margin: 10px 0;
             display: none;
+            background: white;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        .actions button {
+            flex: 1;
+        }
+        .copy-btn {
+            background: #28a745;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>カメラ画像テキスト認識</h1>
+    <div class="app">
+        <header>
+            <h1>スマホOCR</h1>
+        </header>
         
         <div class="camera-container">
             <video id="video" autoplay playsinline></video>
-            <canvas id="canvas"></canvas>
+            <canvas id="canvas" style="display:none"></canvas>
             <img id="preview" alt="プレビュー">
-        </div>
-        
-        <button id="take-photo" class="button">写真を撮影</button>
-        <button id="retake-photo" class="button" style="display: none;">撮り直す</button>
-        
-        <div class="loading" id="loading">
-            <div class="loader"></div>
-            <p>テキストを認識中...</p>
-        </div>
-        
-        <div class="error" id="error">
-            エラーが発生しました。再試行してください。
-        </div>
-        
-        <div id="result-container" style="display: none;">
-            <h2>認識結果:</h2>
-            <div id="recognized-text"></div>
+            
+            <button id="capture-btn" class="button">写真を撮影</button>
+            
+            <div class="actions" id="actions" style="display:none">
+                <button id="retry-btn" class="button">撮り直す</button>
+                <button id="copy-btn" class="button copy-btn">テキストをコピー</button>
+            </div>
+            
+            <div id="loading">
+                <div class="spinner"></div>
+                <p>テキスト認識中...</p>
+            </div>
+            
+            <div id="error"></div>
+            
+            <div id="result" style="display:none">
+                <h3>認識結果:</h3>
+                <div id="text-result"></div>
+            </div>
         </div>
     </div>
 
     <script>
-        // DOM要素の取得
+        // DOM要素
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
         const preview = document.getElementById('preview');
-        const takePhotoButton = document.getElementById('take-photo');
-        const retakePhotoButton = document.getElementById('retake-photo');
-        const recognizedTextElement = document.getElementById('recognized-text');
-        const resultContainer = document.getElementById('result-container');
-        const loadingElement = document.getElementById('loading');
-        const errorElement = document.getElementById('error');
+        const captureBtn = document.getElementById('capture-btn');
+        const retryBtn = document.getElementById('retry-btn');
+        const copyBtn = document.getElementById('copy-btn');
+        const actions = document.getElementById('actions');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const result = document.getElementById('result');
+        const textResult = document.getElementById('text-result');
         
         let stream = null;
         
-        // ページ読み込み時にカメラを自動起動
-        window.addEventListener('DOMContentLoaded', startCamera);
+        // 初期化
+        window.addEventListener('DOMContentLoaded', initCamera);
         
-        // カメラ起動関数
-        async function startCamera() {
+        // カメラ初期化
+        async function initCamera() {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' },
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
                     audio: false
                 });
                 
                 video.srcObject = stream;
-                takePhotoButton.disabled = false;
-                errorElement.style.display = 'none';
+                captureBtn.disabled = false;
+                error.style.display = 'none';
             } catch (err) {
-                console.error('カメラの起動に失敗しました:', err);
-                errorElement.textContent = 'カメラへのアクセスに失敗しました。';
-                errorElement.style.display = 'block';
-                takePhotoButton.disabled = true;
+                handleError('カメラへのアクセスに失敗しました: ' + err.message);
+                captureBtn.disabled = true;
             }
         }
         
         // 写真撮影
-        takePhotoButton.addEventListener('click', () => {
+        captureBtn.addEventListener('click', () => {
             const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -169,55 +188,84 @@
             const imageDataUrl = canvas.toDataURL('image/png');
             preview.src = imageDataUrl;
             
-            // UIの更新
+            // UI更新
             video.style.display = 'none';
             preview.style.display = 'block';
-            takePhotoButton.style.display = 'none';
-            retakePhotoButton.style.display = 'block';
+            captureBtn.style.display = 'none';
+            actions.style.display = 'flex';
             
-            // テキスト認識の実行
+            // テキスト認識
             recognizeText(imageDataUrl);
             
-            // カメラのストリームを停止
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
+            // カメラストリーム停止
+            stopCamera();
         });
         
         // 撮り直し
-        retakePhotoButton.addEventListener('click', () => {
-            // UIをリセット
-            preview.style.display = 'none';
-            retakePhotoButton.style.display = 'none';
+        retryBtn.addEventListener('click', () => {
+            // UI初期化
             video.style.display = 'block';
-            takePhotoButton.style.display = 'block';
-            resultContainer.style.display = 'none';
-            errorElement.style.display = 'none';
+            preview.style.display = 'none';
+            captureBtn.style.display = 'block';
+            actions.style.display = 'none';
+            result.style.display = 'none';
+            error.style.display = 'none';
             
-            // カメラを再起動
-            startCamera();
+            // カメラ再起動
+            initCamera();
         });
         
-        // テキスト認識
+        // テキストコピー
+        copyBtn.addEventListener('click', () => {
+            const text = textResult.textContent;
+            if (text) {
+                navigator.clipboard.writeText(text)
+                    .then(() => {
+                        alert('テキストをクリップボードにコピーしました');
+                    })
+                    .catch(err => {
+                        alert('テキストのコピーに失敗しました: ' + err);
+                    });
+            }
+        });
+        
+        // テキスト認識処理
         async function recognizeText(imageUrl) {
-            loadingElement.style.display = 'block';
-            resultContainer.style.display = 'none';
-            errorElement.style.display = 'none';
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            error.style.display = 'none';
             
             try {
                 const worker = await Tesseract.createWorker('jpn+eng');
-                const result = await worker.recognize(imageUrl);
                 
-                recognizedTextElement.textContent = result.data.text;
-                resultContainer.style.display = 'block';
+                // 認識実行
+                const { data } = await worker.recognize(imageUrl);
+                
+                if (data.text.trim()) {
+                    textResult.textContent = data.text;
+                    result.style.display = 'block';
+                } else {
+                    handleError('テキストが検出できませんでした。別の画像を試してください。');
+                }
                 
                 await worker.terminate();
             } catch (err) {
-                console.error('テキスト認識に失敗しました:', err);
-                errorElement.textContent = 'テキスト認識に失敗しました。再試行してください。';
-                errorElement.style.display = 'block';
+                handleError('テキスト認識エラー: ' + err.message);
             } finally {
-                loadingElement.style.display = 'none';
+                loading.style.display = 'none';
+            }
+        }
+        
+        // エラー処理
+        function handleError(message) {
+            error.textContent = message;
+            error.style.display = 'block';
+        }
+        
+        // カメラ停止
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
             }
         }
     </script>
