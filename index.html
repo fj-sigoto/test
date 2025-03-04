@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>スマホOCRアプリ</title>
+    <title>英数字OCR</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
     <style>
         body {
@@ -109,7 +109,7 @@
 <body>
     <div class="app">
         <header>
-            <h1>スマホOCR</h1>
+            <h1>英数字専用OCR</h1>
         </header>
         
         <div class="camera-container">
@@ -126,7 +126,7 @@
             
             <div id="loading">
                 <div class="spinner"></div>
-                <p>テキスト認識中...</p>
+                <p>英数字認識中...</p>
             </div>
             
             <div id="error"></div>
@@ -236,16 +236,25 @@
             error.style.display = 'none';
             
             try {
-                const worker = await Tesseract.createWorker('jpn+eng');
+                // 英語のみ認識するように設定
+                const worker = await Tesseract.createWorker('eng');
+                
+                // 英数字のみ認識するよう設定
+                await worker.setParameters({
+                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-_+=()[]{}:;"\'<>/$%&#@*'
+                });
                 
                 // 認識実行
                 const { data } = await worker.recognize(imageUrl);
                 
-                if (data.text.trim()) {
-                    textResult.textContent = data.text;
+                // 非英数字を削除（念のため）
+                let filteredText = data.text.replace(/[^A-Za-z0-9.,!?-_+=()[\]{}:;"'<>\/$%&#@*\s]/g, '');
+                
+                if (filteredText.trim()) {
+                    textResult.textContent = filteredText;
                     result.style.display = 'block';
                 } else {
-                    handleError('テキストが検出できませんでした。別の画像を試してください。');
+                    handleError('英数字が検出できませんでした。別の画像を試してください。');
                 }
                 
                 await worker.terminate();
