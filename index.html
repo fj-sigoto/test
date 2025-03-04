@@ -3,530 +3,223 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>画像テキスト比較アプリ</title>
+    <title>カメラ画像テキスト認識</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
     <style>
         body {
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 16px;
+            background-color: #f5f5f5;
         }
         .container {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        .image-container {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-        }
-        .image-box {
-            flex: 1;
-            border: 1px solid #ccc;
-            padding: 10px;
-            border-radius: 8px;
-        }
-        video, canvas, img {
-            width: 100%;
-            border-radius: 4px;
-        }
-        button {
-            background-color: #4CAF50;
-            border: none;
-            color: white;
-            padding: 10px 20px;
+        h1 {
+            font-size: 1.5rem;
             text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 16px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 4px;
+            margin-bottom: 20px;
         }
-        button:disabled {
-            background-color: #cccccc;
+        .camera-container {
+            width: 100%;
+            margin-bottom: 20px;
         }
-        #results {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ddd;
+        #video {
+            width: 100%;
             border-radius: 8px;
-            text-align: left;
+            display: block;
         }
-        .matched {
-            background-color: #e6ffe6;
-            padding: 5px;
-            margin: 5px 0;
-            border-radius: 4px;
+        #canvas {
+            display: none;
         }
-        .options-panel {
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #eee;
+        #preview {
+            width: 100%;
             border-radius: 8px;
-            background-color: #f9f9f9;
-        }
-        .option-group {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 10px;
+            display: none;
             margin-bottom: 10px;
         }
-        .option-item {
-            display: flex;
-            align-items: center;
-            margin-right: 15px;
+        .button {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            padding: 12px 0;
+            border-radius: 8px;
+            font-size: 1rem;
+            width: 100%;
+            margin-bottom: 10px;
+            cursor: pointer;
         }
-        label {
-            margin-right: 5px;
+        .button:disabled {
+            background-color: #cccccc;
         }
-        .processing-preview {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-            margin-top: 10px;
+        #result-container {
+            margin-top: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            background-color: #f9f9f9;
         }
-        .preview-item {
-            flex: 1;
+        #recognized-text {
+            white-space: pre-wrap;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+        .loading {
             text-align: center;
+            margin: 20px 0;
+            display: none;
         }
-        canvas.preview {
-            max-height: 150px;
-            object-fit: contain;
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4285f4;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error {
+            color: red;
+            text-align: center;
+            margin: 10px 0;
+            display: none;
         }
     </style>
 </head>
 <body>
-    <h1>画像テキスト比較アプリ</h1>
     <div class="container">
+        <h1>カメラ画像テキスト認識</h1>
+        
         <div class="camera-container">
             <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+            <img id="preview" alt="プレビュー">
         </div>
         
-        <div class="options-panel">
-            <h3>画像前処理オプション</h3>
-            <div class="option-group">
-                <div class="option-item">
-                    <input type="checkbox" id="grayscale" checked>
-                    <label for="grayscale">グレースケール</label>
-                </div>
-                <div class="option-item">
-                    <input type="checkbox" id="contrast" checked>
-                    <label for="contrast">コントラスト調整</label>
-                </div>
-                <div class="option-item">
-                    <input type="checkbox" id="threshold" checked>
-                    <label for="threshold">二値化処理</label>
-                </div>
-                <div class="option-item">
-                    <input type="checkbox" id="sharpen" checked>
-                    <label for="sharpen">シャープ化</label>
-                </div>
-            </div>
-            <div class="option-group">
-                <div class="option-item">
-                    <label for="contrastLevel">コントラスト:</label>
-                    <input type="range" id="contrastLevel" min="1" max="3" step="0.1" value="1.5">
-                    <span id="contrastValue">1.5</span>
-                </div>
-                <div class="option-item">
-                    <label for="thresholdLevel">二値化しきい値:</label>
-                    <input type="range" id="thresholdLevel" min="0" max="255" value="128">
-                    <span id="thresholdValue">128</span>
-                </div>
-            </div>
-            <button id="testProcessingBtn">前処理テスト</button>
-            <div class="processing-preview">
-                <div class="preview-item">
-                    <p>元画像</p>
-                    <canvas id="originalPreview" class="preview"></canvas>
-                </div>
-                <div class="preview-item">
-                    <p>処理後</p>
-                    <canvas id="processedPreview" class="preview"></canvas>
-                </div>
-            </div>
+        <button id="take-photo" class="button">写真を撮影</button>
+        <button id="retake-photo" class="button" style="display: none;">撮り直す</button>
+        
+        <div class="loading" id="loading">
+            <div class="loader"></div>
+            <p>テキストを認識中...</p>
         </div>
         
-        <div>
-            <button id="captureBtn">写真を撮影</button>
-            <button id="compareBtn" disabled>テキストを比較</button>
-            <button id="resetBtn">リセット</button>
+        <div class="error" id="error">
+            エラーが発生しました。再試行してください。
         </div>
         
-        <div class="image-container">
-            <div class="image-box">
-                <h3>画像 1</h3>
-                <img id="photo1" alt="撮影した画像1">
-                <canvas id="processed1" style="display: none;"></canvas>
-                <div id="text1"></div>
-            </div>
-            <div class="image-box">
-                <h3>画像 2</h3>
-                <img id="photo2" alt="撮影した画像2">
-                <canvas id="processed2" style="display: none;"></canvas>
-                <div id="text2"></div>
-            </div>
-        </div>
-        
-        <div id="results">
-            <h3>一致したテキスト:</h3>
-            <div id="matchedText"></div>
+        <div id="result-container" style="display: none;">
+            <h2>認識結果:</h2>
+            <div id="recognized-text"></div>
         </div>
     </div>
 
-    <!-- Tesseract.js のインポート -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/2.1.5/tesseract.min.js"></script>
-    
     <script>
-        // 変数の初期化
-        let currentImageNum = 1;
-        let capturedImages = {
-            photo1: null,
-            photo2: null
-        };
-        let extractedTexts = {
-            text1: [],
-            text2: []
-        };
-        
-        // DOM要素
+        // DOM要素の取得
         const video = document.getElementById('video');
-        const captureBtn = document.getElementById('captureBtn');
-        const compareBtn = document.getElementById('compareBtn');
-        const resetBtn = document.getElementById('resetBtn');
-        const photo1 = document.getElementById('photo1');
-        const photo2 = document.getElementById('photo2');
-        const processed1 = document.getElementById('processed1');
-        const processed2 = document.getElementById('processed2');
-        const text1Div = document.getElementById('text1');
-        const text2Div = document.getElementById('text2');
-        const matchedTextDiv = document.getElementById('matchedText');
-        const testProcessingBtn = document.getElementById('testProcessingBtn');
-        const originalPreview = document.getElementById('originalPreview');
-        const processedPreview = document.getElementById('processedPreview');
+        const canvas = document.getElementById('canvas');
+        const preview = document.getElementById('preview');
+        const takePhotoButton = document.getElementById('take-photo');
+        const retakePhotoButton = document.getElementById('retake-photo');
+        const recognizedTextElement = document.getElementById('recognized-text');
+        const resultContainer = document.getElementById('result-container');
+        const loadingElement = document.getElementById('loading');
+        const errorElement = document.getElementById('error');
         
-        // 前処理オプション要素
-        const grayscaleCheck = document.getElementById('grayscale');
-        const contrastCheck = document.getElementById('contrast');
-        const thresholdCheck = document.getElementById('threshold');
-        const sharpenCheck = document.getElementById('sharpen');
-        const contrastLevel = document.getElementById('contrastLevel');
-        const thresholdLevel = document.getElementById('thresholdLevel');
-        const contrastValue = document.getElementById('contrastValue');
-        const thresholdValue = document.getElementById('thresholdValue');
+        let stream = null;
         
-        // スライダー値の表示を更新
-        contrastLevel.addEventListener('input', () => {
-            contrastValue.textContent = contrastLevel.value;
-        });
-        thresholdLevel.addEventListener('input', () => {
-            thresholdValue.textContent = thresholdLevel.value;
-        });
-
-        // カメラを初期化
-        async function initCamera() {
+        // ページ読み込み時にカメラを自動起動
+        window.addEventListener('DOMContentLoaded', startCamera);
+        
+        // カメラ起動関数
+        async function startCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment" },
-                    audio: false 
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'environment' },
+                    audio: false
                 });
+                
                 video.srcObject = stream;
+                takePhotoButton.disabled = false;
+                errorElement.style.display = 'none';
             } catch (err) {
-                console.error("カメラへのアクセスに失敗しました:", err);
-                alert("カメラへのアクセスに失敗しました。カメラの許可を確認してください。");
+                console.error('カメラの起動に失敗しました:', err);
+                errorElement.textContent = 'カメラへのアクセスに失敗しました。';
+                errorElement.style.display = 'block';
+                takePhotoButton.disabled = true;
             }
         }
-
-        // 画像をキャプチャ
-        function captureImage() {
-            const canvas = document.createElement('canvas');
+        
+        // 写真撮影
+        takePhotoButton.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            const imgData = canvas.toDataURL('image/png');
-            const targetCanvas = currentImageNum === 1 ? processed1 : processed2;
-            const targetImg = currentImageNum === 1 ? photo1 : photo2;
+            const imageDataUrl = canvas.toDataURL('image/png');
+            preview.src = imageDataUrl;
             
-            // 元の画像を表示
-            targetImg.src = imgData;
-            capturedImages[`photo${currentImageNum}`] = imgData;
+            // UIの更新
+            video.style.display = 'none';
+            preview.style.display = 'block';
+            takePhotoButton.style.display = 'none';
+            retakePhotoButton.style.display = 'block';
             
-            // キャンバスサイズを設定
-            targetCanvas.width = canvas.width;
-            targetCanvas.height = canvas.height;
+            // テキスト認識の実行
+            recognizeText(imageDataUrl);
             
-            // 画像を前処理して表示
-            processImage(imgData, targetCanvas);
-            
-            // テキスト抽出の進行状況を表示
-            const textDiv = currentImageNum === 1 ? text1Div : text2Div;
-            textDiv.innerHTML = "<p>テキスト解析中...</p>";
-            
-            // 前処理された画像からテキスト抽出
-            extractText(targetCanvas.toDataURL('image/png'), `text${currentImageNum}`);
-            
-            if (currentImageNum === 1) {
-                currentImageNum = 2;
-            } else {
-                // 比較ボタンを有効化
-                captureBtn.disabled = true;
-                compareBtn.disabled = false;
+            // カメラのストリームを停止
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
             }
-        }
+        });
         
-        // 画像の前処理（プレビュー用）
-        function testImageProcessing() {
-            if (!video.srcObject) return;
+        // 撮り直し
+        retakePhotoButton.addEventListener('click', () => {
+            // UIをリセット
+            preview.style.display = 'none';
+            retakePhotoButton.style.display = 'none';
+            video.style.display = 'block';
+            takePhotoButton.style.display = 'block';
+            resultContainer.style.display = 'none';
+            errorElement.style.display = 'none';
             
-            // カメラからフレームをキャプチャ
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // プレビューキャンバスのサイズ設定
-            originalPreview.width = canvas.width;
-            originalPreview.height = canvas.height;
-            processedPreview.width = canvas.width;
-            processedPreview.height = canvas.height;
-            
-            // 元画像を表示
-            const origCtx = originalPreview.getContext('2d');
-            origCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height);
-            
-            // 処理済み画像を表示
-            processImage(canvas.toDataURL('image/png'), processedPreview);
-        }
-
-        // 画像の前処理
-        function processImage(imageData, targetCanvas) {
-            const img = new Image();
-            img.onload = function() {
-                const ctx = targetCanvas.getContext('2d');
-                // 元の画像を描画
-                ctx.drawImage(img, 0, 0, targetCanvas.width, targetCanvas.height);
-                
-                // ピクセルデータを取得
-                const imageData = ctx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
-                const data = imageData.data;
-                
-                // グレースケール変換
-                if (grayscaleCheck.checked) {
-                    for (let i = 0; i < data.length; i += 4) {
-                        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                        data[i] = data[i + 1] = data[i + 2] = avg;
-                    }
-                }
-                
-                // コントラスト調整
-                if (contrastCheck.checked) {
-                    const contrast = parseFloat(contrastLevel.value);
-                    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-                    
-                    for (let i = 0; i < data.length; i += 4) {
-                        data[i] = factor * (data[i] - 128) + 128;         // R
-                        data[i + 1] = factor * (data[i + 1] - 128) + 128; // G
-                        data[i + 2] = factor * (data[i + 2] - 128) + 128; // B
-                    }
-                }
-                
-                // シャープ化
-                if (sharpenCheck.checked) {
-                    const pixels = new Uint8ClampedArray(data);
-                    const width = targetCanvas.width;
-                    const height = targetCanvas.height;
-                    
-                    for (let y = 1; y < height - 1; y++) {
-                        for (let x = 1; x < width - 1; x++) {
-                            const idx = (y * width + x) * 4;
-                            
-                            for (let c = 0; c < 3; c++) {
-                                const i = idx + c;
-                                
-                                // 3x3カーネルを適用
-                                const val = -pixels[i - width * 4 - 4] - pixels[i - width * 4] - pixels[i - width * 4 + 4]
-                                           - pixels[i - 4] + 9 * pixels[i] - pixels[i + 4]
-                                           - pixels[i + width * 4 - 4] - pixels[i + width * 4] - pixels[i + width * 4 + 4];
-                                           
-                                data[i] = Math.min(255, Math.max(0, val));
-                            }
-                        }
-                    }
-                }
-                
-                // 二値化処理
-                if (thresholdCheck.checked) {
-                    const threshold = parseInt(thresholdLevel.value);
-                    
-                    for (let i = 0; i < data.length; i += 4) {
-                        const v = (data[i] + data[i + 1] + data[i + 2]) / 3 >= threshold ? 255 : 0;
-                        data[i] = data[i + 1] = data[i + 2] = v;
-                    }
-                }
-                
-                // 処理した画像を描画
-                ctx.putImageData(imageData, 0, 0);
-            };
-            img.src = imageData;
-        }
-
-        // テキスト抽出
-        function extractText(imageData, textId) {
-            Tesseract.recognize(
-                imageData,
-                'jpn+eng', // 日本語と英語を認識
-                { 
-                    logger: m => console.log(m),
-                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろわをんーアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン、。「」・ 　',
-                    psm: 6 // 単一のテキストブロックとして処理
-                }
-            ).then(({ data: { text, lines } }) => {
-                const textArray = text.split('\n').filter(line => line.trim().length > 0);
-                
-                // 行ごとのテキストを保存
-                if (textId === 'text1') {
-                    extractedTexts.text1 = textArray;
-                    text1Div.innerHTML = `<p>検出された行数: ${textArray.length}</p>` + 
-                                       textArray.map(line => `<p>${line}</p>`).join('');
-                } else {
-                    extractedTexts.text2 = textArray;
-                    text2Div.innerHTML = `<p>検出された行数: ${textArray.length}</p>` + 
-                                       textArray.map(line => `<p>${line}</p>`).join('');
-                }
-            });
-        }
-
-        // テキスト比較
-        function compareTexts() {
-            const text1 = extractedTexts.text1;
-            const text2 = extractedTexts.text2;
-            
-            // 一致する行を検索
-            const matchedLines = [];
-            const matchScores = [];
-            
-            for (const line1 of text1) {
-                if (line1.trim().length <= 3) continue; // 短すぎる行は除外
-                
-                let bestMatchScore = 0;
-                let bestMatch = null;
-                
-                for (const line2 of text2) {
-                    if (line2.trim().length <= 3) continue; // 短すぎる行は除外
-                    
-                    // 類似度スコアを計算
-                    const score = calculateSimilarity(line1, line2);
-                    
-                    if (score > 0.7 && score > bestMatchScore) { // 70%以上一致で最良のマッチ
-                        bestMatchScore = score;
-                        bestMatch = line2;
-                    }
-                }
-                
-                if (bestMatch) {
-                    matchedLines.push(line1);
-                    matchScores.push(Math.round(bestMatchScore * 100));
-                }
-            }
-            
-            // 結果表示
-            if (matchedLines.length > 0) {
-                matchedTextDiv.innerHTML = matchedLines.map((line, idx) => 
-                    `<div class="matched">
-                        <strong>${line}</strong>
-                        <small>(一致率: ${matchScores[idx]}%)</small>
-                    </div>`
-                ).join('');
-            } else {
-                matchedTextDiv.innerHTML = "<p>一致するテキストが見つかりませんでした。</p>";
-            }
-        }
+            // カメラを再起動
+            startCamera();
+        });
         
-        // レーベンシュタイン距離（文字列の編集距離）を計算
-        function levenshteinDistance(str1, str2) {
-            const m = str1.length;
-            const n = str2.length;
+        // テキスト認識
+        async function recognizeText(imageUrl) {
+            loadingElement.style.display = 'block';
+            resultContainer.style.display = 'none';
+            errorElement.style.display = 'none';
             
-            // 動的計画法で計算するためのテーブルを作成
-            const dp = Array(m + 1).fill().map(() => Array(n + 1).fill(0));
-            
-            // 初期化
-            for (let i = 0; i <= m; i++) {
-                dp[i][0] = i;
+            try {
+                const worker = await Tesseract.createWorker('jpn+eng');
+                const result = await worker.recognize(imageUrl);
+                
+                recognizedTextElement.textContent = result.data.text;
+                resultContainer.style.display = 'block';
+                
+                await worker.terminate();
+            } catch (err) {
+                console.error('テキスト認識に失敗しました:', err);
+                errorElement.textContent = 'テキスト認識に失敗しました。再試行してください。';
+                errorElement.style.display = 'block';
+            } finally {
+                loadingElement.style.display = 'none';
             }
-            for (let j = 0; j <= n; j++) {
-                dp[0][j] = j;
-            }
-            
-            // 計算
-            for (let i = 1; i <= m; i++) {
-                for (let j = 1; j <= n; j++) {
-                    if (str1[i - 1] === str2[j - 1]) {
-                        dp[i][j] = dp[i - 1][j - 1];
-                    } else {
-                        dp[i][j] = Math.min(
-                            dp[i - 1][j - 1] + 1, // 置換
-                            dp[i - 1][j] + 1,     // 削除
-                            dp[i][j - 1] + 1      // 挿入
-                        );
-                    }
-                }
-            }
-            
-            return dp[m][n];
         }
-        
-        // 類似度スコアを計算（0〜1の範囲、1が完全一致）
-        function calculateSimilarity(str1, str2) {
-            const maxLength = Math.max(str1.length, str2.length);
-            if (maxLength === 0) return 1.0; // 両方空文字の場合
-            
-            // 文字列内に他方の文字列が含まれる場合は高い類似度を返す
-            if (str1.includes(str2) || str2.includes(str1)) {
-                return 0.9; // 90%の類似度
-            }
-            
-            const distance = levenshteinDistance(str1, str2);
-            return 1 - (distance / maxLength);
-        }
-
-        // リセット機能
-        function resetApp() {
-            currentImageNum = 1;
-            capturedImages = {
-                photo1: null,
-                photo2: null
-            };
-            extractedTexts = {
-                text1: [],
-                text2: []
-            };
-            
-            photo1.src = "";
-            photo2.src = "";
-            text1Div.innerHTML = "";
-            text2Div.innerHTML = "";
-            matchedTextDiv.innerHTML = "";
-            
-            captureBtn.disabled = false;
-            compareBtn.disabled = true;
-        }
-
-        // イベントリスナー
-        captureBtn.addEventListener('click', captureImage);
-        compareBtn.addEventListener('click', compareTexts);
-        resetBtn.addEventListener('click', resetApp);
-        testProcessingBtn.addEventListener('click', testImageProcessing);
-
-        // 初期化
-        initCamera();
     </script>
 </body>
 </html>
